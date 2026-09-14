@@ -3,10 +3,10 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from
 
 const API_BASE = "https://hotcrave-api-274560140811.southamerica-east1.run.app";
 const FIREBASE_CONFIG = {
-  apiKey: "REPLACE_WITH_FIREBASE_WEB_API_KEY",
-  authDomain: "REPLACE_WITH_FIREBASE_AUTH_DOMAIN",
+  apiKey: "AIzaSyBG67zAGYRofpCxu02oRKfPjD_v1HHiOrM",
+  authDomain: "hotcrave-app.firebaseapp.com",
   projectId: "hotcrave-app",
-  appId: "REPLACE_WITH_FIREBASE_WEB_APP_ID",
+  appId: "1:274560140811:web:841b72c8b3c8a0fae4e90e",
 };
 
 const appRoot = document.querySelector("#app");
