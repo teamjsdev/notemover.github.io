@@ -1,0 +1,191 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+
+const API_BASE = "https://hotcrave-api-274560140811.southamerica-east1.run.app";
+
+// Firebase Web configuration is public client configuration, not a secret.
+// Replace the values with the configuration for the Firebase project used by
+// the existing HotCrave business account before enabling the production login.
+const FIREBASE_CONFIG = {
+  apiKey: "REPLACE_WITH_FIREBASE_WEB_API_KEY",
+  authDomain: "REPLACE_WITH_FIREBASE_AUTH_DOMAIN",
+  projectId: "hotcrave-app",
+  appId: "REPLACE_WITH_FIREBASE_WEB_APP_ID",
+};
+
+const appRoot = document.querySelector("#app");
+let auth = null;
+let currentUser = null;
+let business = null;
+
+function isFirebaseConfigured() {
+  return Object.values(FIREBASE_CONFIG).every(
+    (value) => value && !value.startsWith("REPLACE_WITH_")
+  );
+}
+
+function render(html) {
+  appRoot.innerHTML = html;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function renderLogin(errorMessage = "") {
+  render(`
+    <section class="auth-shell">
+      <div class="brand-mark" aria-hidden="true">♨</div>
+      <div class="auth-card">
+        <p class="eyebrow">CALENTITOS · NEGOCIOS</p>
+        <h1>Gestioná tu negocio</h1>
+        <p class="muted">Accedé al espacio de administración de tu negocio.</p>
+        ${errorMessage ? `<p class="error" role="alert">${escapeHtml(errorMessage)}</p>` : ""}
+        <form id="login-form" novalidate>
+          <label>
+            Correo electrónico
+            <input id="email" name="email" type="email" autocomplete="email" required>
+          </label>
+          <label>
+            Contraseña
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+          </label>
+          <button class="primary" type="submit">Ingresar</button>
+        </form>
+        <p class="security-note">La autenticación usa la misma cuenta de negocio de Firebase que la app Android.</p>
+      </div>
+    </section>
+  `);
+
+  document.querySelector("#login-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const email = form.email.value.trim();
+    const password = form.password.value;
+    const button = form.querySelector("button");
+    button.disabled = true;
+    button.textContent = "Ingresando…";
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "Ingresar";
+      renderLogin(authErrorMessage(error));
+    }
+  });
+}
+
+function authErrorMessage(error) {
+  switch (error?.code) {
+    case "auth/invalid-credential":
+    case "auth/wrong-password":
+    case "auth/user-not-found":
+      return "El correo o la contraseña no son correctos.";
+    case "auth/too-many-requests":
+      return "Demasiados intentos. Probá nuevamente más tarde.";
+    default:
+      return "No se pudo iniciar sesión. Intentá nuevamente.";
+  }
+}
+
+function renderDashboard() {
+  render(`
+    <div class="business-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">CALENTITOS · NEGOCIOS</p>
+          <strong>Panel de negocio</strong>
+        </div>
+        <button id="logout" class="secondary">Cerrar sesión</button>
+      </header>
+      <main class="dashboard">
+        <section class="hero-card">
+          <div>
+            <p class="eyebrow">BIENVENIDO</p>
+            <h1>${escapeHtml(business?.name || "Tu negocio")}</h1>
+            <p class="muted">Desde acá vas a poder administrar tu presencia en Calentitos.</p>
+          </div>
+          <div class="status-pill">Sesión activa</div>
+        </section>
+
+        <section class="section-heading">
+          <div>
+            <p class="eyebrow">ADMINISTRACIÓN</p>
+            <h2>Tu negocio</h2>
+          </div>
+        </section>
+
+        <div class="feature-grid">
+          <article class="feature-card"><span>◉</span><h3>Perfil</h3><p>Información y presentación del negocio.</p><small>Próximamente</small></article>
+          <article class="feature-card"><span>▦</span><h3>Productos</h3><p>Administrá los productos que ofrecés.</p><small>Próximamente</small></article>
+          <article class="feature-card"><span>♨</span><h3>Hot Events</h3><p>Publicá avisos de comida recién hecha.</p><small>Próximamente</small></article>
+          <article class="feature-card"><span>⌁</span><h3>QR</h3><p>Accedé al enlace público de tu negocio.</p><small>Próximamente</small></article>
+          <article class="feature-card"><span>★</span><h3>Premium</h3><p>Consultá y administrá tu plan.</p><small>Próximamente</small></article>
+        </div>
+      </main>
+    </div>
+  `);
+
+  document.querySelector("#logout")?.addEventListener("click", () => signOut(auth));
+}
+
+async function loadBusiness() {
+  const token = await currentUser.getIdToken();
+  const response = await fetch(`${API_BASE}/business/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    throw new Error("No se pudo obtener el negocio.");
+  }
+  return response.json();
+}
+
+async function onSignedIn(user) {
+  currentUser = user;
+  render(`<section class="loading-shell"><div class="spinner"></div><p>Accediendo a tu negocio…</p></section>`);
+
+  try {
+    business = await loadBusiness();
+    if (!business) {
+      render(`<section class="message-shell"><h1>No encontramos un negocio</h1><p class="muted">Esta cuenta no tiene un negocio asociado.</p><button id="logout" class="secondary">Cerrar sesión</button></section>`);
+      document.querySelector("#logout")?.addEventListener("click", () => signOut(auth));
+      return;
+    }
+    renderDashboard();
+  } catch {
+    render(`<section class="message-shell"><h1>No pudimos acceder</h1><p class="muted">Revisá tu conexión e intentá nuevamente.</p><button id="retry" class="primary">Reintentar</button><button id="logout" class="secondary">Cerrar sesión</button></section>`);
+    document.querySelector("#retry")?.addEventListener("click", () => onSignedIn(user));
+    document.querySelector("#logout")?.addEventListener("click", () => signOut(auth));
+  }
+}
+
+if (!isFirebaseConfigured()) {
+  render(`
+    <section class="message-shell">
+      <div class="brand-mark" aria-hidden="true">♨</div>
+      <h1>Configuración pendiente</h1>
+      <p class="muted">La interfaz web de negocios ya está creada, pero todavía falta conectar la configuración pública de Firebase del proyecto de negocio.</p>
+      <p class="security-note">No se debe colocar ninguna clave privada, service account ni secreto en este sitio.</p>
+    </section>
+  `);
+} else {
+  const firebaseApp = initializeApp(FIREBASE_CONFIG);
+  auth = getAuth(firebaseApp);
+  onAuthStateChanged(auth, (user) => {
+    if (user) onSignedIn(user);
+    else renderLogin();
+  });
+}
