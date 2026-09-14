@@ -9,8 +9,7 @@ import {
 const API_BASE = "https://hotcrave-api-274560140811.southamerica-east1.run.app";
 
 // Firebase Web configuration is public client configuration, not a secret.
-// Replace the values with the configuration for the Firebase project used by
-// the existing HotCrave business account before enabling the production login.
+// These values must belong to the same Firebase project used by business accounts.
 const FIREBASE_CONFIG = {
   apiKey: "REPLACE_WITH_FIREBASE_WEB_API_KEY",
   authDomain: "REPLACE_WITH_FIREBASE_AUTH_DOMAIN",
@@ -21,7 +20,7 @@ const FIREBASE_CONFIG = {
 const appRoot = document.querySelector("#app");
 let auth = null;
 let currentUser = null;
-let business = null;
+let businessContext = null;
 
 function isFirebaseConfigured() {
   return Object.values(FIREBASE_CONFIG).every(
@@ -62,7 +61,7 @@ function renderLogin(errorMessage = "") {
           </label>
           <button class="primary" type="submit">Ingresar</button>
         </form>
-        <p class="security-note">La autenticación usa la misma cuenta de negocio de Firebase que la app Android.</p>
+        <p class="security-note">Usa la misma cuenta de negocio de Firebase que la app Android.</p>
       </div>
     </section>
   `);
@@ -99,7 +98,23 @@ function authErrorMessage(error) {
   }
 }
 
+async function loadBusiness() {
+  const token = await currentUser.getIdToken();
+  const response = await fetch(`${API_BASE}/business/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    throw new Error("No se pudo obtener el negocio.");
+  }
+  return response.json();
+}
+
 function renderDashboard() {
+  const business = businessContext.business;
+  const membership = businessContext.membership;
+
   render(`
     <div class="business-shell">
       <header class="topbar">
@@ -116,7 +131,7 @@ function renderDashboard() {
             <h1>${escapeHtml(business?.name || "Tu negocio")}</h1>
             <p class="muted">Desde acá vas a poder administrar tu presencia en Calentitos.</p>
           </div>
-          <div class="status-pill">Sesión activa</div>
+          <div class="status-pill">${escapeHtml(membership?.role || "Miembro")}</div>
         </section>
 
         <section class="section-heading">
@@ -140,26 +155,13 @@ function renderDashboard() {
   document.querySelector("#logout")?.addEventListener("click", () => signOut(auth));
 }
 
-async function loadBusiness() {
-  const token = await currentUser.getIdToken();
-  const response = await fetch(`${API_BASE}/business/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    if (response.status === 404) return null;
-    throw new Error("No se pudo obtener el negocio.");
-  }
-  return response.json();
-}
-
 async function onSignedIn(user) {
   currentUser = user;
   render(`<section class="loading-shell"><div class="spinner"></div><p>Accediendo a tu negocio…</p></section>`);
 
   try {
-    business = await loadBusiness();
-    if (!business) {
+    businessContext = await loadBusiness();
+    if (!businessContext) {
       render(`<section class="message-shell"><h1>No encontramos un negocio</h1><p class="muted">Esta cuenta no tiene un negocio asociado.</p><button id="logout" class="secondary">Cerrar sesión</button></section>`);
       document.querySelector("#logout")?.addEventListener("click", () => signOut(auth));
       return;
@@ -177,7 +179,7 @@ if (!isFirebaseConfigured()) {
     <section class="message-shell">
       <div class="brand-mark" aria-hidden="true">♨</div>
       <h1>Configuración pendiente</h1>
-      <p class="muted">La interfaz web de negocios ya está creada, pero todavía falta conectar la configuración pública de Firebase del proyecto de negocio.</p>
+      <p class="muted">La interfaz web de negocios ya está creada, pero falta conectar la configuración pública de Firebase del proyecto de negocio.</p>
       <p class="security-note">No se debe colocar ninguna clave privada, service account ni secreto en este sitio.</p>
     </section>
   `);
