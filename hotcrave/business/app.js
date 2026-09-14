@@ -3,7 +3,7 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from
 
 const API_BASE = "https://hotcrave-api-staging-274560140811.southamerica-east1.run.app";
 const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyBG67zAGYRofpCxu02oRKfPjD_v1HHiOrM",
+  apiKey: "AIzaSyBG67zAGYRofpCxu02oRKFjPjD_v1HHiOrM",
   authDomain: "hotcrave-app.firebaseapp.com",
   projectId: "hotcrave-app",
   appId: "1:274560140811:web:841b72c8b3c8a0fae4e90e",
@@ -41,17 +41,31 @@ function formatDate(value) {
   return new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" }).format(date);
 }
 
+function effectiveStatus(event, now = Date.now()) {
+  if (event.status === "SOLD_OUT") return "SOLD_OUT";
+  const expiresAt = new Date(event.expiresAt).getTime();
+  if (Number.isFinite(expiresAt) && expiresAt <= now) return "EXPIRED";
+  return event.status;
+}
+
 function statusLabel(status) {
   return {
     AVAILABLE_NOW: "Disponible ahora",
     READY_IN_15_MIN: "Listo en 15 min",
     READY_IN_30_MIN: "Listo en 30 min",
     SOLD_OUT: "Agotado",
+    EXPIRED: "Expirado",
   }[status] || status;
 }
 
 function statusClass(status) {
-  return status === "SOLD_OUT" ? "status-sold" : status === "AVAILABLE_NOW" ? "status-live" : "status-ready";
+  return status === "SOLD_OUT"
+    ? "status-sold"
+    : status === "EXPIRED"
+      ? "status-expired"
+      : status === "AVAILABLE_NOW"
+        ? "status-live"
+        : "status-ready";
 }
 
 function apiErrorMessage(error) {
@@ -125,7 +139,7 @@ function shell(content) {
 
 function dashboard() {
   const business = businessContext.business;
-  const active = hotEvents.filter((event) => event.status !== "SOLD_OUT" && new Date(event.expiresAt).getTime() > Date.now()).length;
+  const active = hotEvents.filter((event) => effectiveStatus(event) !== "SOLD_OUT" && effectiveStatus(event) !== "EXPIRED").length;
   const limit = business?.plan === "PREMIUM" ? 10 : 1;
   render(shell(`<section class="hero-card"><div><p class="eyebrow">BIENVENIDO</p><h1>${escapeHtml(business?.name || "Tu negocio")}</h1><p class="muted">Administrá tu presencia y avisá cuando haya comida recién hecha.</p></div><div class="status-pill">${escapeHtml(businessContext.membership?.role || "Miembro")}</div></section><section class="section-heading"><p class="eyebrow">ACTIVIDAD</p><h2>Hot Events</h2></section><section class="action-card"><div><h3>Publicar un Hot Event</h3><p class="muted">Avisá a tus seguidores que un producto está listo o estará disponible pronto.</p></div><button id="open-hot-events" class="primary">Administrar Hot Events</button></section><section class="stats-grid"><article class="stat-card"><span>♨</span><strong>${active} / ${limit}</strong><p>Hot Events activos</p></article><article class="stat-card"><span>▦</span><strong>${products.length}</strong><p>Productos activos</p></article></section>`));
   bindShell();
@@ -135,13 +149,18 @@ function dashboard() {
 function hotEventsView(message = "", error = false) {
   const business = businessContext.business;
   const limit = business?.plan === "PREMIUM" ? 10 : 1;
-  const active = hotEvents.filter((event) => event.status !== "SOLD_OUT" && new Date(event.expiresAt).getTime() > Date.now()).length;
+  const active = hotEvents.filter((event) => effectiveStatus(event) !== "SOLD_OUT" && effectiveStatus(event) !== "EXPIRED").length;
   const options = products.map((product) => `<option value="${escapeHtml(product.productId)}">${escapeHtml(product.name)}</option>`).join("");
   const eventCards = hotEvents.length
-    ? hotEvents.slice().reverse().map((event) => {
+    ? hotEvents.slice().sort((a, b) => {
+        const aTime = new Date(a.createdAt || a.availableAt || 0).getTime();
+        const bTime = new Date(b.createdAt || b.availableAt || 0).getTime();
+        return bTime - aTime;
+      }).map((event) => {
         const product = products.find((item) => item.productId === event.productId);
-        const canSoldOut = event.status === "AVAILABLE_NOW" && new Date(event.expiresAt).getTime() > Date.now();
-        return `<article class="event-card"><div class="event-card-main"><div class="event-title-row"><h3>${escapeHtml(product?.name || "Producto")}</h3><span class="event-status ${statusClass(event.status)}">${escapeHtml(statusLabel(event.status))}</span></div><p class="muted">Disponible: ${escapeHtml(formatDate(event.availableAt))}</p><p class="event-expiry">Vence: ${escapeHtml(formatDate(event.expiresAt))}</p></div>${canSoldOut ? `<button class="secondary sold-out" data-event-id="${escapeHtml(event.hotEventId)}">Marcar agotado</button>` : ""}</article>`;
+        const status = effectiveStatus(event);
+        const canSoldOut = status === "AVAILABLE_NOW";
+        return `<article class="event-card"><div class="event-card-main"><div class="event-title-row"><h3>${escapeHtml(product?.name || "Producto")}</h3><span class="event-status ${statusClass(status)}">${escapeHtml(statusLabel(status))}</span></div><p class="muted">Disponible: ${escapeHtml(formatDate(event.availableAt))}</p><p class="event-expiry">Vence: ${escapeHtml(formatDate(event.expiresAt))}</p></div>${canSoldOut ? `<button class="secondary sold-out" data-event-id="${escapeHtml(event.hotEventId)}">Marcar agotado</button>` : ""}</article>`;
       }).join("")
     : `<div class="empty-card"><span>♨</span><h3>No hay Hot Events todavía</h3><p class="muted">Publicá el primero desde este panel.</p></div>`;
 
