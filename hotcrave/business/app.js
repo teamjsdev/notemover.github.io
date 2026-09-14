@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
-const API_BASE = "https://hotcrave-api-274560140811.southamerica-east1.run.app";
+const API_BASE = "https://hotcrave-api-staging-274560140811.southamerica-east1.run.app";
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBG67zAGYRofpCxu02oRKfPjD_v1HHiOrM",
   authDomain: "hotcrave-app.firebaseapp.com",
