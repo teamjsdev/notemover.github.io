@@ -144,6 +144,7 @@ async function load() {
     state.business = business;
     state.products = productsResponse.products || [];
     state.hotEvent = (hotEventsResponse.hotEvents || []).find(item => item.business.businessId === state.businessId) || null;
+    await restorePushSubscription();
     document.title = `${business.name} · Calentitos`;
     renderBusiness();
   } catch (error) {
@@ -166,14 +167,47 @@ function isStandalone() {
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
 
+async function getCurrentPushSubscription() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+  await navigator.serviceWorker.register('/hotcrave/b/sw.js', { scope: '/hotcrave/b/' });
+  const registration = await navigator.serviceWorker.ready;
+  return registration.pushManager.getSubscription();
+}
+
+async function restorePushSubscription() {
+  try {
+    const subscription = await getCurrentPushSubscription();
+    if (!subscription) {
+      state.subscription = null;
+      state.following = false;
+      return;
+    }
+
+    const json = subscription.toJSON();
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
+      state.subscription = null;
+      state.following = false;
+      return;
+    }
+
+    state.subscription = subscription;
+    state.following = true;
+  } catch (error) {
+    console.warn('No se pudo restaurar la suscripción de notificaciones.', error);
+    state.subscription = null;
+    state.following = false;
+  }
+}
+
 async function toggleNotifications(button) {
   button.disabled = true;
   try {
     if (state.following) {
       if (state.subscription) {
+        const json = state.subscription.toJSON();
         await api('/web/push/subscriptions', {
           method: 'DELETE',
-          body: JSON.stringify({ businessId: state.businessId, ...state.subscription.toJSON(), p256dh: state.subscription.toJSON().keys.p256dh, auth: state.subscription.toJSON().keys.auth }),
+          body: JSON.stringify({ businessId: state.businessId, endpoint: json.endpoint }),
         });
       }
       state.following = false;
@@ -193,9 +227,10 @@ async function toggleNotifications(button) {
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') throw new Error('Las notificaciones no fueron habilitadas.');
 
-    await navigator.serviceWorker.register('/hotcrave/b/sw.js', { scope: '/hotcrave/b/' });
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToUint8Array(VAPID_PUBLIC_KEY) });
+    const subscription = await getCurrentPushSubscription() || await (async () => {
+      const registration = await navigator.serviceWorker.ready;
+      return registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToUint8Array(VAPID_PUBLIC_KEY) });
+    })();
     const json = subscription.toJSON();
     if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) throw new Error('No se pudo crear la suscripción de notificaciones.');
 
