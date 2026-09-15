@@ -207,8 +207,14 @@ async function toggleNotifications(button) {
         const json = state.subscription.toJSON();
         await api('/web/push/subscriptions', {
           method: 'DELETE',
-          body: JSON.stringify({ businessId: state.businessId, endpoint: json.endpoint }),
+          body: JSON.stringify({
+            businessId: state.businessId,
+            endpoint: json.endpoint,
+            p256dh: json.keys?.p256dh,
+            auth: json.keys?.auth,
+          }),
         });
+        await state.subscription.unsubscribe();
       }
       state.following = false;
       state.subscription = null;
